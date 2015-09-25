@@ -5,14 +5,6 @@ library("RODBC")
 conn <- odbcConnect("TXDB",uid="haquser01",pwd="123456",case="tolower",believeNRows=FALSE)
 #若不清楚数据源名称，可使用函数odbcDataSources()
 
-
-#myheader <- c(
-# "User-Agent"="Mozilla/5.0 (Windows NT 6.1; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/41.0.2272.89 Safari/537.36",
-#"Accept"="text/css,*/*;q=0.1",
-#"Accept-Language"="zh-CN,zh;q=0.8",
-#"Connection"="keep-alive"
-#)
-
 #-------------日志存储函数----------
 logRecTxt = function(fileName, log)
 {
@@ -25,12 +17,33 @@ logRecTxt = function(fileName, log)
 }
 
 # ----------------- 提取所有页面 -----------------
-# 拼接得到网址url主要部分
-getURL_list <- function(urllist,page){
-  #经查询，microbell网站公司调研板块自2015-01-01至2015-03-01共有80个页面，故设定为
-  #urllist=0
-  #page=1:80
-  urllist[page]=paste("http://www.microbell.com/superareport.asp?dockey=%25&dockey2=&doctime1=2015-01-01&doctime2=2015-03-01&report=1&doctype=DocTitle&paget=",page,"&from=",sep='')
+getURL_list <- function(dayfirst,daylast)
+{
+  #本函数用于得到需要爬虫抓取的网页地址
+  #
+  #输入：
+  #dayfirst:研报检索日期的初始值，这里设定为“2015-01-01”
+  #daylast:研报检索日期的最终值，这里设定为“2015-03-01”
+  
+  #
+  #输出：
+  #urllist:网页完整地址的字符串向量
+  
+  #得到检索日期区间内的所有页面地址
+  page <- 0
+  urllist <- NULL
+  while(page>=0)
+  {
+    page <- page+1
+    urllist[page]=paste("http://www.microbell.com/superareport.asp?dockey=%25&dockey2=&doctime1=",dayfirst,"&doctime2=",daylast,"&report=1&doctype=DocTitle&paget=",page,"&from=",sep='')
+    t1 <- getURL(urllist[page],.encoding="gb2312")
+    t2 <- strsplit(t1,"\r\n")[[1]]
+    t3 <- t2[grep("td width", t2)]
+    if (length(t3)==3){
+      break
+    }
+  }
+  urllist <- urllist[1:(page-1)]
   return(urllist)
 }
 
@@ -45,7 +58,7 @@ readURL1 <- function(urllist, N)
   
   #
   # 输出：
-  # temp：上榜日的网页信息代码，一个字符向量
+  # temps：网页信息代码，长度为80的字符向量
   
   
   # 读取不成功，则反复读取N次。若N次读取不成功则返回NULL，记录错误日志。
@@ -76,9 +89,21 @@ readURL1 <- function(urllist, N)
   return(temps)
 }
 
+
+
+
 # ----------------- 提取大标题的字段 -----------------
 
-fetch.title <- function(temps){
+fetch.title <- function(temps)
+{
+  #本函数用于从网页信息代码中提取研报的大标题，范例格式为“财富证券-中南传媒-601098-数字教育和互联网IP的隐形冠军-150923”
+  #
+  #输入：
+  #temps:网页信息代码，长度为80的字符向量
+  
+  #
+  #输出：
+  #title.all:从2015-01-01到2015-03-01之间公司调研栏目下的所有研报标题，是字符串向量
   title.all <- NULL
   for(temp1 in temps)
   {
@@ -100,7 +125,16 @@ fetch.title <- function(temps){
 
 # ----------------- 提取属性的字段 -----------------
 
-fetch.nature <- function(temps){
+fetch.nature <- function(temps)
+{
+  #本函数用于从网页信息代码中提取研报的属性，即其所在栏目，这里一律为“公司调研”
+  #
+  #输入：
+  #temps:网页信息代码，长度为80的字符向量
+  
+  #
+  #输出：
+  #nature.all:从2015-01-01到2015-03-01之间公司调研栏目下的所有研报标题，是字符串向量
   nature.all <- NULL
   for(temp1 in temps){
     temp2 <- strsplit(temp1,"\r\n")[[1]] #以换行符分割
@@ -122,9 +156,19 @@ fetch.nature <- function(temps){
 
 # ----------------- 提取作者的字段 -----------------
 
-fetch.author <- function(temps){
+fetch.author <- function(temps)
+{
+  #本函数用于从网页信息代码中提取研报作者
+  #
+  #输入：
+  #temps:网页信息代码，长度为80的字符向量
+  
+  #
+  #输出：
+  #author.all:从2015-01-01到2015-03-01之间公司调研栏目下的所有研报的作者，是字符串向量
   author.all <- NULL
   for(temp1 in temps){
+    temp2 <- strsplit(temp1,"\r\n")[[1]] #以换行符分割
     autadr <- temp2[grep("td width", temp2)+4] # 提取author的行
     
     author1 <- NULL
@@ -141,9 +185,19 @@ fetch.author <- function(temps){
 
 # ----------------- 提取评级的字段 -----------------
 
-fetch.rate <- function(temps){
+fetch.rate <- function(temps)
+{
+  #本函数用于从网页信息代码中提取研报的评级
+  #
+  #输入：
+  #temps:网页信息代码，长度为80的字符向量
+  
+  #
+  #输出：
+  #rate.all:从2015-01-01到2015-03-01之间公司调研栏目下的所有研报的评级，是字符串向量
   rate.all <- NULL
   for(temp1 in temps){
+    temp2 <- strsplit(temp1,"\r\n")[[1]] #以换行符分割
     ratadr <- temp2[grep("td width", temp2)+6] # 提取rate的行
     
     rate <- gregexpr(">.*<",ratadr)#也可以这么写rate <- gregexpr(">[\u4e00-\u9fa5]+.*<",ratadr)
@@ -161,12 +215,34 @@ fetch.rate <- function(temps){
 
 
 # ------------- 把数据以给定变量名称存进数据框里 ----------
-loaddata <- function(title.all,author.all,nature.all.rate.all){
+
+loaddata <- function(title.all,author.all,nature.all.rate.all)
+{
+  #本函数用于把提取字段以数据框形式存储起来
+  #
+  #输入：
+  #title.all:包含所有研报标题的字符串向量
+  #author.all:包含所有研报作者的字符串向量
+  #nature.all:包含所有研报属性的字符串向量，这里一律为“公司调研”
+  #rate.all:包含所有研报评级的字符串向量
+  
+  #
+  #输出：
+  #company:包含所有字段的数据框，列分别为：
+  # $F_CODE:证券代码
+  # $F_NAME:证券简称
+  # $F_DATE:公布日期
+  # $F_0001:机构名称
+  # $F_0002:报告名称
+  # $F_0003:研报作者
+  # $F_0004:研报类型
+  # $F_0005:研报评级
+  
+  #把研报大标题以“-”分隔符分隔成不同字段
   F <- strsplit(title.all,"-")
   F_CODE <- sapply(F, function(F) F[3])
   F_NAME <- sapply(F, function(F) F[2])
   F_DATE <- paste("20", sapply(F, function(F) F[5]),sep='')
-  
   F_0001 <- sapply(F, function(F) F[1])
   F_0002 <- sapply(F, function(F) F[4])
   
@@ -175,33 +251,40 @@ loaddata <- function(title.all,author.all,nature.all.rate.all){
   F_0004 <- nature.all
   F_0005 <- rate.all
   company<-data.frame(F_CODE,F_NAME,F_DATE,F_0001,F_0002,F_0003,F_0004,F_0005)
+  return(company)
+}
+
+#----------数据保存函数---------------
+data.save <- function(conn, company)
+{
+  #本函数用于把数据框保存进数据库
+  #
+  #输入：
+  #company:一个数据框
+  
+  #无输出
+  for (m in 1:nrow(company)){
+    str <- "insert into TEST(F_CODE,F_NAME,F_DATE,F_0001,F_0002,F_0003,F_0004,F_0005) VALUES("
+    for (n in 1:7){
+      str <- paste(str, "'", company[m,n], "'", ",", sep='')
+    }
+    str <- paste(str,"'", company[m,8], "'", ")", sep='')
+    sqlQuery(conn, str)
+  }
 }
 
 
 
-
-
-
-  
-  
-  
-  
-  
-  
-  
-  
-  
-  
-  
-  
-  
-  
-  
-  
-  
-  
-  
-  
-  
-  
-  
+#------------执行部分-----------
+dayfirst <- "2015-01-01"
+daylast <- "2015-03-01"
+N=5
+urllist<- getURL_list(dayfirst,daylast)
+logRecTxt('test.txt', '1234')
+temps <- readURL1(urllist, N)
+title.all <- fetch.title(temps)
+nature.all <- fetch.nature(temps)
+author.all <- fetch.author(temps)
+rate.all <- fetch.rate(temps)
+company <- loaddata(title.all,author.all,nature.all.rate.all)
+data.save(conn, company)
